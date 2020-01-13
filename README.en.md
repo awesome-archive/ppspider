@@ -67,15 +67,9 @@ npm install -g typescript
 ```
 
 ## Prepare the development environment
-Recommended IDEA(Ultimate version) + NodeJs Plugin  
-![Ultimate 版本截图](https://s1.ax1x.com/2018/06/13/CO6qRf.png)  
-The NodeJs plugin's version should match with the IDEA's version    
-![IDEA 版本](https://s1.ax1x.com/2018/06/13/COcdYt.png)  
-![nodejs 插件版本](https://s1.ax1x.com/2018/06/13/COcBSf.png)
-
-[IDEA download](https://www.jetbrains.com/idea/download/)  
-[NodeJs Plugin download](http://plugins.jetbrains.com/plugin/6098-nodejs)
-
+Recommended IDEA(Ultimate version)  
+![Ultimate 版本截图](https://s1.ax1x.com/2018/06/13/CO6qRf.png)    
+  
 Nodejs And Javascript Configuration in IDEA   
 ![nodejs-config.png](https://i.loli.net/2019/07/11/5d2747dff288e83940.png)  
 ![javascript-config.png](https://i.loli.net/2019/07/11/5d2747e00f32352225.png)  
@@ -129,6 +123,7 @@ https://github.com/xiyuan-fengyu/ppspider_docker_deploy/blob/master/README.en.md
 16. Page.evaluate with async function [PuppeteerEvalAsyncApp](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/examples/PuppeteerEvalAsyncApp.ts)  
 17. Set AddToQueue/FromQueue name with a regexp string to create a series of queues dynamically [AddToRegexQueue](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/AddToRegexQueue.ts)    
 18. Drag to complete the puzzle [PuppeteerUtil.dragJigsaw](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/DragJigsawTest1.ts)  
+19. Solve the problem that some requests work abnormally [HandlBadRequestOnHeadlessApp](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/examples/HandlBadRequestOnHeadlessApp.ts)  
    
 # ppspider System Introduction
 ## Decorator
@@ -203,9 +198,17 @@ export type OnStartConfig = {
     
     // Task timeout, in milliseconds, default: 300000, negative number means never timeout
     timeout?: number;
+
+    maxTry?: number;
     
     // description of this sub task type
     description?: string;
+
+    // default BloonFilter，the job won't execute again after save and restart. If you want to re-execute, use NoFilter
+    filterType?: Class_Filter; 
+
+    // default content of job.datas
+    defaultDatas?: any; 
 }
 ```
 [@OnStart example](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/quickstart/App.ts)    
@@ -225,7 +228,9 @@ export type OnTimeConfig = {
     exeInterval?: number;
     exeIntervalJitter?: number;
     timeout?: number;
+    maxTry?: number;
     description?: string;
+    defaultDatas?: any; 
 }
 ```
 [@OnTime example](https://github.com/xiyuan-fengyu/ppspider_example/tree/master/src/ontime/App.ts)  
@@ -290,7 +295,11 @@ export type FromQueueConfig = {
     // Task timeout, in milliseconds, default: 300000, negative number means never timeout
     timeout?: number;
     
+    maxTry?: number;    
+
     description?: string;
+
+    defaultDatas?: any; 
 }
 ```
 [@AddToQueue @FromQueue example](https://github.com/xiyuan-fengyu/ppspider_example/tree/master/src/queue)  
@@ -550,7 +559,23 @@ Job panel: search jobs and view details
   and the page instance will not be injected successfully. This error is checked during startup.  
 
 
-# Update Note
+# Update Note  
+2019-09-04 v2.2.3-preview.1578363288631
+1. fix bug in job interruption    
+
+2019-09-04 v2.2.3-preview.1577332807380   
+1. fix bug: job is no longer retried after being interrupted on UI interface    
+2. add maxTry parameter for task and queue configuration, support always try when maxTry is less than 0    
+3. add defaultDatas parameter for task and queue configuration as the default value for job.datas    
+4. add the operation of switching the running state of the queue on UI interface  
+5. add the operation to edit timeout/maxTry/defaultDatas paramters on UI interface       
+
+ 
+2019-09-04 v2.2.3-preview.1574909694087   
+1. OnStart can be configured to use BloonFilter(default, will not re-run after saving status and restart) or NoFilter(will re-run after saving status and restart)    
+2. fix a bug in db search by page  
+3. add a new decorator called OnEvent, used to watch system event, there is only one use presently [OnEvent Example](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/OnEventTest.ts)     
+
 2019-09-04 v2.2.3-preview.1569208986875  
 1. fix bug: null pointer error in src/common/db/MongodbDao.ts#remove     
 2. add a new parameter to transfer the parent job info for JobOverride callback method    

@@ -3,6 +3,7 @@ import {Queue} from "../queue/Queue";
 import {
     AddToQueueInfo,
     AddToQueueInfos,
+    Class_Filter,
     FromQueueConfig,
     JobConfig,
     JobOverrideConfig,
@@ -24,6 +25,7 @@ import {NoFilter} from "../filter/NoFilter";
 import {Filter} from "../filter/Filter";
 import {BloonFilter} from "../filter/BloonFilter";
 import {PromiseUtil} from "../../common/util/PromiseUtil";
+import {ObjectUtil} from "../../common/util/ObjectUtil";
 
 type QueueInfo = {
 
@@ -107,6 +109,7 @@ export class QueueManager {
                 }
             }
         }
+        this.delayPushInfo();
     }
 
     /**
@@ -155,10 +158,19 @@ export class QueueManager {
         return new Promise<any>(resolve => {
             appInfo.jobManager.job(data._id).then(job => {
                 // 重新设置最大尝试次数
-                if (job.datas._ == null) {
-                    job.datas._ = {};
+                const queueInfo = this.queueInfos[job.queue];
+                !job.datas._ && (job.datas._ = {});
+                if (job.datas._.maxTry < 0 || (!job.datas._.maxTry && queueInfo.config.maxTry < 0)) {
+                    // 无限尝试
                 }
-                job.datas._.maxTry = job.tryNum + Defaults.maxTry;
+                else {
+                    // 有限次尝试，增加最大尝试次数
+                    let moreTry = queueInfo.config.maxTry ;
+                    if (!moreTry || moreTry < 0) {
+                        moreTry = Defaults.maxTry;
+                    }
+                    job.datas._.maxTry = job.tryNum + moreTry;
+                }
 
                 // 重新添加到任务队列
                 this.addJobToQueue(job, null, job.queue, this.queueInfos[job.queue].queue, null);
@@ -250,7 +262,10 @@ export class QueueManager {
                 success: queueInfo.success || 0,
                 fail: queueInfo.fail || 0,
                 tryFail: queueInfo.tryFail || 0,
-                lastExeTime: queueInfo.lastExeTime
+                lastExeTime: queueInfo.lastExeTime,
+                timeout: queueInfo.config.timeout,
+                maxTry: queueInfo.config.maxTry,
+                defaultDatas: queueInfo.config.defaultDatas || {},
             };
             if (taskType == "OnStart") {
                 const urls = queueInfo.config['urls'];
@@ -299,6 +314,26 @@ export class QueueManager {
         return res;
     }
 
+    private simpleQueueInfos() {
+        const queues: any = {};
+        for (let queueName in this.queueInfos) {
+            const queueInfo = this.queueInfos[queueName];
+            if (!queueInfo.config || !queueInfo.queue) {
+                continue;
+            }
+            const taskType = queueInfo.config['type'];
+            queues[queueName] = {
+                type: taskType,
+                running: queueInfo.curParallel,
+                success: queueInfo.success || 0,
+                fail: queueInfo.fail || 0,
+                tryFail: queueInfo.tryFail || 0,
+                remain: queueInfo.queue.size()
+            };
+        }
+        return queues;
+    }
+
     /**
      * 从运行状态持久化文件中恢复运行状态
      * 实际上是通过反序列化创建了一个临时的QueueManager实例，然后将需要的信息复制给当前的实例
@@ -330,6 +365,9 @@ export class QueueManager {
 
                         thisQueueInfo.config.exeInterval = queueInfo.config.exeInterval;
                         thisQueueInfo.config.exeIntervalJitter = queueInfo.config.exeIntervalJitter;
+                        thisQueueInfo.config.timeout = queueInfo.config.timeout;
+                        thisQueueInfo.config.maxTry = queueInfo.config.maxTry;
+                        thisQueueInfo.config.defaultDatas = queueInfo.config.defaultDatas;
 
                         this.updateConfig({
                             queue: queueName,
@@ -345,7 +383,7 @@ export class QueueManager {
                                 value: queueInfo.config["cron"]
                             });
                         }
-                        else if (taskType == "FromQueue") {
+                        else {
                             thisQueueInfo.queue = queueInfo.queue;
                         }
 
@@ -361,6 +399,15 @@ export class QueueManager {
         catch (e) {
             logger.warn(e.stack);
         }
+
+        // 初始化 OnStart 类型任务
+        for (let queueName in this.queueInfos) {
+            const queueInfo = this.queueInfos[queueName];
+            if (queueInfo.config["type"] == "OnStart") {
+                this.addOnStartJob(queueInfo.name, (queueInfo.config as OnStartConfig).filterType || BloonFilter);
+            }
+        }
+
         this.delayPushInfo();
     }
 
@@ -394,7 +441,7 @@ export class QueueManager {
     }
 
     reExecuteOnStartJob(queueName: string) {
-        this.addOnStartJob(queueName);
+        this.addOnStartJob(queueName, NoFilter);
         return {
             success: true,
             message: "add job to queue successfully"
@@ -443,6 +490,18 @@ export class QueueManager {
         }
         else if (data.field == "curMaxParallel") {
             queueInfo.curMaxParallel = data.value;
+        }
+        else if (data.field == "urls") {
+          (queueInfo.config as OnStartConfig).urls = data.value;
+        }
+        else if (data.field == "timeout") {
+          queueInfo.config.timeout = data.value;
+        }
+        else if (data.field == "maxTry") {
+          queueInfo.config.maxTry = data.value;
+        }
+        else if (data.field == "defaultDatas") {
+          queueInfo.config.defaultDatas = data.value;
         }
 
         this.delayPushInfo();
@@ -582,6 +641,14 @@ export class QueueManager {
             config.exeIntervalJitter = config.exeInterval * Defaults.exeIntervalJitterRate;
         }
 
+        if (config.timeout == null) {
+          config.timeout = Defaults.jobTimeout;
+        }
+
+        if (config.maxTry == null) {
+          config.maxTry = Defaults.maxTry;
+        }
+
         let queueInfo = this.queueInfos[queueName];
         if (!queueInfo) {
             this.queueInfos[queueName] = queueInfo = {
@@ -618,17 +685,16 @@ export class QueueManager {
     }
 
     private addOnStartConfig(config: OnStartConfig) {
-        const queueName = this.addQueueConfig(null, config);
-        this.addOnStartJob(queueName);
+        this.addQueueConfig(null, config);
     }
 
-    private addOnStartJob(queueName: string) {
+    private addOnStartJob(queueName: string, filterType: Class_Filter) {
         const config = this.queueInfos[queueName].config as OnStartConfig;
         this.addToQueue(null, {
             queueName: queueName,
             jobs: config.urls,
             queueType: DefaultQueue,
-            filterType: NoFilter
+            filterType: filterType
         });
     }
 
@@ -719,12 +785,6 @@ export class QueueManager {
                     continue;
                 }
 
-                if (!queueInfo) {
-                    this.queueInfos[queueName] = queueInfo = {
-                        name: queueName,
-                        queue: null
-                    };
-                }
                 let queue: Queue = queueInfo.queue;
                 if (!queue) {
                     queueInfo.queue = queue = new (jobInfo.queueType || DefaultQueue)();
@@ -762,6 +822,14 @@ export class QueueManager {
         job.depth || (job.depth = 0);
         job.tryNum || (job.tryNum = 0);
         job.status || (job.status = JobStatus.Waiting);
+
+        // 如果 config 中有 defaultDatas 配置，需要进行defaultDatas和job.datas的融合
+        const queueInfo = this.queueInfos[queueName];
+        if (queueInfo.config.defaultDatas && Object.keys(queueInfo.config.defaultDatas).length > 0) {
+            const mergeDatas = ObjectUtil.deepClone(queueInfo.config.defaultDatas);
+            ObjectUtil.deepAssign(job.datas, mergeDatas);
+            job.datas = mergeDatas;
+        }
 
         // 添加额外信息
         if (_) {
@@ -887,6 +955,11 @@ export class QueueManager {
                             const interval = (queueInfo.config.exeInterval || 0)
                                 + (Math.random() * 2 - 1) * queueInfo.config.exeIntervalJitter;
                             this.queueParallelNextExeTimes[queueName][curParallelIndex] = new Date().getTime() + interval;
+                        }).then(() => {
+                            appInfo.eventBus.emit(Events.QueueManager_JobExecuted, {
+                                job: job,
+                                queues: this.simpleQueueInfos()
+                            });
                         });
                     }
                     else break;
@@ -915,9 +988,10 @@ export class QueueManager {
             job.tryNum++;
             await appInfo.jobManager.save(job, true);
 
-            let res;
+            let interrupted = false;
             try {
-                res = await new Promise(async (resolve, reject) => {
+                let listenInterrupt = null;
+                await new Promise(async (resolve, reject) => {
                     // 如果任务设置有超时时间，则设置超时回调
                    if (queueInfo.config.timeout == null || queueInfo.config.timeout >= 0) {
                        const timeout = queueInfo.config.timeout || Defaults.jobTimeout;
@@ -926,9 +1000,10 @@ export class QueueManager {
                        }, timeout);
                    }
 
-                    const listenInterrupt = (jobId, reason) => {
+                    listenInterrupt = (jobId, reason) => {
                         if (jobId == null || jobId == job._id) {
                             // 强制停止任务
+                            interrupted = true;
                             reject(new Error(Events.QueueManager_InterruptJob + ": " + reason));
                             if (jobId) {
                                 // 这里必须要setTimeout才能通知成功，很奇怪
@@ -939,7 +1014,7 @@ export class QueueManager {
                         }
                     };
 
-                    appInfo.eventBus.once(Events.QueueManager_InterruptJob, listenInterrupt);
+                    appInfo.eventBus.on(Events.QueueManager_InterruptJob, listenInterrupt);
                     try {
                         const paramArr = [];
 
@@ -960,7 +1035,8 @@ export class QueueManager {
                     catch (e) {
                         reject(e);
                     }
-                    appInfo.eventBus.removeListener(Events.QueueManager_InterruptJob, listenInterrupt);
+                }).finally(() => {
+                    listenInterrupt && appInfo.eventBus.removeListener(Events.QueueManager_InterruptJob, listenInterrupt);
                 });
 
                 job.status = JobStatus.Success;
@@ -968,7 +1044,16 @@ export class QueueManager {
                 this.successNum++;
             }
             catch (e) {
-                if (job.tryNum >= ((job.datas._ || {}).maxTry || Defaults.maxTry)) {
+                let maxTry = (job.datas._ || {}).maxTry;
+                if (!maxTry) {
+                    if (queueInfo.config.maxTry) {
+                        maxTry = queueInfo.config.maxTry;
+                    }
+                    else {
+                        maxTry = Defaults.maxTry;
+                    }
+                }
+                if (interrupted || (maxTry >= 0 && job.tryNum >= maxTry)) {
                     // 重试次数达到最大，任务失败
                     job.status = JobStatus.Fail;
                     this.failNum++;

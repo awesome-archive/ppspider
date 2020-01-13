@@ -67,16 +67,9 @@ npm install -g typescript
 ```
 
 ## 准备开发环境
-推荐使用 IDEA + nodejs 插件  
+推荐使用 IDEA    
 IDEA一定要下载 Ultimate 版本，否则有很多功能无法使用  
 ![Ultimate 版本截图](https://s1.ax1x.com/2018/06/13/CO6qRf.png)  
-下载nodejs插件的时候，需根据IDEA的版本下载可用的 nodejs 版本，IDEA的版本可通过菜单栏点击 Help -> About 看到  
-例如我正在使用的IDEA和nodejs插件版本  
-![IDEA 版本](https://s1.ax1x.com/2018/06/13/COcdYt.png)  
-![nodejs 插件版本](https://s1.ax1x.com/2018/06/13/COcBSf.png)
-
-[IDEA 下载地址](https://www.jetbrains.com/idea/download/)  
-[nodejs 插件下载地址](http://plugins.jetbrains.com/plugin/6098-nodejs)
 
 IDEA中 nodejs 和 javascript 配置  
 ![nodejs-config.png](https://i.loli.net/2019/07/11/5d2747dff288e83940.png)  
@@ -145,6 +138,7 @@ https://github.com/xiyuan-fengyu/ppspider_docker_deploy
 16. Page.evaluate 执行 async function [PuppeteerEvalAsyncApp](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/examples/PuppeteerEvalAsyncApp.ts)    
 17. AddToQueue/FromQueue name 属性使用正则表达式，动态创建一组队列 [AddToRegexQueue](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/AddToRegexQueue.ts)      
 18. 滑块验证码 [PuppeteerUtil.dragJigsaw](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/DragJigsawTest1.ts)   
+19. 无头模式下，请求返回结果不正常的处理办法 [HandlBadRequestOnHeadlessApp](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/examples/HandlBadRequestOnHeadlessApp.ts)  
 
 # 系统介绍
 ## 装饰器
@@ -192,7 +186,10 @@ export type OnStartConfig = {
     exeInterval?: number; // 两个任务的执行间隔时间
     exeIntervalJitter?: number; // 在 exeInterval 基础上增加一个随机的抖动，这个值为左右抖动最大半径，默认为 exeIntervalJitter * 0.25
     timeout?: number; // 任务超时时间，单位：毫秒，默认：300000ms(5分钟)，负数表示永不超时
+    maxTry?: number; // 最大尝试次数，默认：3次，负数表示一直尝试    
     description?: string; // 任务描述
+    filterType?: Class_Filter; // 添加任务过滤器，默认是 BloonFilter；保存状态后，系统重启时，不会重复执行；如果希望重复执行，可以用 NoFilter    
+    defaultDatas?: any; // 该类任务统一预设的job.datas内容
 }
 ```
 使用例子 [@OnStart example](https://github.com/xiyuan-fengyu/ppspider_example/blob/master/src/quickstart/App.ts)  
@@ -212,7 +209,9 @@ export type OnTimeConfig = {
     exeInterval?: number;
     exeIntervalJitter?: number;
     timeout?: number;
+    maxTry?: number;
     description?: string;
+    defaultDatas?: any; // 该类任务统一预设的job.datas内容
 }
 ```
 使用例子 [@OnTime example](https://github.com/xiyuan-fengyu/ppspider_example/tree/master/src/ontime/App.ts)  
@@ -264,7 +263,9 @@ export type FromQueueConfig = {
     exeInterval?: number;
     exeIntervalJitter?: number;
     timeout?: number;
+    maxTry?: number;
     description?: string;
+    defaultDatas?: any; // 该类任务统一预设的job.datas内容
 }
 ```
 使用例子 [@AddToQueue @FromQueue example](https://github.com/xiyuan-fengyu/ppspider_example/tree/master/src/queue)  
@@ -517,6 +518,22 @@ Job 面板可以对所有子任务实例进行搜索，查看任务详情
     参数类型，导致 page 参数无法正常注入，这个错误在启动过程中就会检查出来。  
           
 # 更新日志
+2019-09-04 v2.2.3-preview.1578363288631
+1. 修复任务中断的bug  
+
+2019-09-04 v2.2.3-preview.1577332807380   
+1. 修复bug：Job被UI界面中断后不再重试  
+2. 任务和队列配置增加maxTry参数，支持maxTry小于0时一直尝试  
+3. 任务和队列配置增加defaultDatas，作为job.datas的预设值  
+4. UI界面增加切换队列running状态的操作  
+5. UI界面增加timeout/maxTry/defaultDatas的修改配置功能    
+
+
+2019-09-04 v2.2.3-preview.1574909694087   
+1. OnStart任务可配置使用 BloonFilter(默认，保存状态后重启不重复执行)或NoFilter(保存状态后重启重复执行)    
+2. 修复db分页查询中的bug  
+3. 添加 OnEvent 注解，用于监听系统事件，目前仅一种实际应用 [OnEvent Example](https://github.com/xiyuan-fengyu/ppspider/blob/master/src/test/component/OnEventTest.ts)     
+
 2019-09-04 v2.2.3-preview.1569208986875  
 1. 修复 src/common/db/MongodbDao.ts 中 remove 方法中的空指针bug  
 2. JobOverride 回调方法增加参数，用于传递 parent job    

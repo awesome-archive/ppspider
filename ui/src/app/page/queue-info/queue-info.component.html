@@ -81,6 +81,10 @@
             <mat-icon
               matTooltip="Execute this OnStart job again">refresh</mat-icon>
           </button>
+          <button (click)="setQueueRunning(queue.name, !queue.running)" mat-icon-button>
+            <mat-icon
+              [matTooltip]="queue.running ? 'Disable this queue' : 'Enable this queue'">{{queue.running ? 'pause' : 'play_arrow'}}</mat-icon>
+          </button>
         </mat-card-title>
         <mat-card-subtitle>
           <span class="taskType">{{queue.type}}</span>
@@ -112,11 +116,30 @@
         </div>
 
         <div class="infoRow">
-          <label class="key">maxParallelConfig</label>
-          <div class="value">
-              <span (click)="openEditConfig(queue, 'parallel', queue.parallel)" class="editable">
-                {{stringify(queue.parallel)}}
+          <div class="grid">
+            <label class="key">maxParallelConfig</label>
+            <div class="value">
+                <span (click)="openEditConfig(queue, 'parallel', queue.parallel)" class="editable">
+                  {{stringify(queue.parallel)}}
+                </span>
+            </div>
+          </div>
+          <div class="grid">
+            <label class="key">timeout</label>
+            <div class="value">
+              <span (click)="openEditConfig(queue, 'timeout', queue.timeout)" class="editable">
+                {{stringify(queue.timeout)}}
               </span>
+              <span class="unit">ms</span>
+            </div>
+          </div>
+          <div class="grid">
+            <label class="key">maxTry</label>
+            <div class="value">
+                <span (click)="openEditConfig(queue, 'maxTry', queue.maxTry)" class="editable">
+                  {{stringify(queue.maxTry)}}
+                </span>
+            </div>
           </div>
         </div>
 
@@ -166,6 +189,15 @@
           <div class="grid" title="count of failed tries | count of jobs failed after max try">
             <label class="key">failed</label>
             <div class="value">{{queue.tryFail}} | {{queue.fail}}</div>
+          </div>
+        </div>
+
+        <div class="infoRow">
+          <label class="key">defaultDatas</label>
+          <div class="value">
+              <span (click)="openEditConfig(queue, 'defaultDatas', queue.defaultDatas)" class="editable">
+                {{stringify(queue.defaultDatas)}}
+              </span>
           </div>
         </div>
 
